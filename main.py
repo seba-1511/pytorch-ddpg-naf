@@ -5,6 +5,9 @@ from itertools import count
 from tqdm import tqdm
 from tensorboardX import SummaryWriter
 
+from statistics import mean
+import randopt as ro
+
 import gym
 import numpy as np
 from gym import wrappers
@@ -53,6 +56,10 @@ args = parser.parse_args()
 env = NormalizedActions(gym.make(args.env_name))
 
 writer = SummaryWriter()
+
+REWARDS = []
+TEST_REWARDS = []
+experiment = ro.Experiment(name='baseline-' + args.algo)
 
 env.seed(args.seed)
 torch.manual_seed(args.seed)
@@ -115,11 +122,12 @@ for i_episode in range(args.num_episodes):
         if done:
             break
 
+    REWARDS.append(episode_reward)
     writer.add_scalar('reward/train', episode_reward, i_episode)
 
     # Update param_noise based on distance metric
     if args.param_noise:
-        episode_transitions = memory.memory[memory.position-t:memory.position]
+        episode_transitions = memory.memory[memory.position - t:memory.position]
         states = torch.cat([transition[0] for transition in episode_transitions], 0)
         unperturbed_actions = agent.select_action(states, None, None)
         perturbed_actions = torch.cat([transition[1] for transition in episode_transitions], 0)
@@ -146,6 +154,14 @@ for i_episode in range(args.num_episodes):
         writer.add_scalar('reward/test', episode_reward, i_episode)
 
         rewards.append(episode_reward)
+        TEST_REWARDS.append(episode_reward)
         print("Episode: {}, total numsteps: {}, reward: {}, average reward: {}".format(i_episode, total_numsteps, rewards[-1], np.mean(rewards[-10:])))
-    
+
 env.close()
+result = mean(TEST_REWARDS[-5:])
+data = vars(args)
+data.update({
+    'train_rewards': REWARDS,
+    'test_rewards': TEST_REWARDS,
+    })
+experiment.add_result(result, data=data)
